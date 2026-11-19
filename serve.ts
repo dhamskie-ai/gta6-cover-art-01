@@ -1,10 +1,9 @@
 // A tiny static server for app/ (Node 22, standard library only), so the
-// cover studio can be tried locally with no build step:
-//   node serve.ts            serves app/ on http://localhost:8080
-//   node serve.ts --port 8000
-// It sends the MIME types an offline web app needs, refuses any path outside
-// app/, and does nothing clever: a development convenience, not a web server
-// for the internet.
+// entry can be tried locally without a build step: `node serve.ts` serves
+// app/ on http://localhost:8080. It sends the MIME types an offline web
+// app needs, refuses any path outside app/, and otherwise does nothing
+// clever: this is a development convenience, not a web server for the
+// internet.
 import { createReadStream, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { extname, join, normalize, resolve, sep } from 'node:path';

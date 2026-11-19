@@ -1,11 +1,7 @@
-// Neon Coast Cover Studio — the entry program (Node 22, standard library
-// only). It hands the app in: copies app/ and screenshots/ from beside this
-// file into /output (or MAKEFUN_OUTPUT_DIR outside the grader) and writes
-// /output/dossier.json with buildDossier from the vendored make.fun library.
-// The program runs twice and both runs must write the same bytes.
-//
-// Try it locally first:
-//   node serve.ts            (then open http://localhost:8080)
+// Neon Coast Cover Studio — entrypoint (Node 22, standard library only).
+// Hands the app in: copies app/ and screenshots/ from beside this file to
+// /output and writes /output/dossier.json with the vendored make.fun
+// library. Outside the grader, MAKEFUN_OUTPUT_DIR stands in for /output:
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 
 import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -23,11 +19,10 @@ if (existsSync(join(here, 'screenshots'))) {
   cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
 }
 
-// The scorer's caps (reference/gate.json): text_max_bytes shapes the dossier
-// text; the rest refuse an entry the scorer would refuse — more than 4
-// screenshots or one over 256 KiB; app/ over 993 files or 48 MiB in all, or
-// a path under app/ over 1000 bytes. app/ counts beside /output's own
-// 1000-entry cap, its screenshots/ and dossier.json.
+// The scorer's caps: only text_max_bytes shapes the dossier bytes; the
+// rest refuse an entry the scorer would refuse (more than 4 screenshots
+// or one over 256 KiB; more than 993 files in app/ or 48 MiB of app files
+// in all, or a path under app/ over 1000 bytes).
 writeFileSync(
   join(out, 'dossier.json'),
   buildDossier(out, {

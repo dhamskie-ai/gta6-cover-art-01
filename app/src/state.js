@@ -1,131 +1,116 @@
-// State for Neon Coast Cover Studio: the cover's settings, its photos and
-// its panels, plus an undo/redo history of plain JSON snapshots. Photos are
-// kept as { id, name, src } — sample photos point at files under samples/,
-// uploads carry a data: URL so the state stays self-contained.
+// Neon Coast Cover Studio — shared state: layouts, grades, sizes, history.
+// Everything serialisable lives in the plain state object; the photo pixels
+// live outside it (see main.js photoStore) and panels only name a photo id.
 
-import { LAYOUT_PANELS } from './cover.js';
+export const LAYOUTS = [
+  { id: 'grid4', label: '4-Panel Grid', panels: 4 },
+  { id: 'hero3', label: 'Hero + Three', panels: 4 },
+  { id: 'fullbleed', label: 'Full Bleed', panels: 1 },
+  { id: 'tilted', label: 'Tilted Snapshots', panels: 3 },
+  { id: 'grid9', label: 'Nine-Panel Grid', panels: 9 },
+  { id: 'titleblock', label: 'Title Block', panels: 3 },
+];
 
-let photoSeq = 0;
+export const GRADES = [
+  { id: 'sunset', label: 'Sunset', accent: '#ff7a3d', glow: '#ff4d8d' },
+  { id: 'neon', label: 'Neon Coast', accent: '#22e6ff', glow: '#ff3df0' },
+  { id: 'vice', label: 'Vice Pink', accent: '#ff5da2', glow: '#ffb03d' },
+  { id: 'teal', label: 'Teal Night', accent: '#2affc4', glow: '#2a7bff' },
+  { id: 'gold', label: 'Gold Hour', accent: '#ffc53d', glow: '#ff7a3d' },
+];
 
-/** A fresh default cover: 4-panel grid, sunset grade, no photos yet. */
+export const SIZES = [
+  { id: 'square', label: 'Square 1080 × 1080', w: 1080, h: 1080 },
+  { id: 'portrait', label: 'Story 1080 × 1350', w: 1080, h: 1350 },
+  { id: 'landscape', label: 'Wide 1920 × 1080', w: 1920, h: 1080 },
+];
+
+export function defaultPanel(photoId) {
+  return { photo: photoId, dx: 0, dy: 0, zoom: 1 };
+}
+
 export function defaultState() {
   return {
     layout: 'grid4',
     grade: 'sunset',
-    title: 'NEON COAST',
-    subtitle: 'Vice nights, your story',
-    badge: 'EST. 2026',
+    size: 'square',
+    title: 'Sunset Heist',
+    subtitle: 'neon coast nights',
+    badge: 'NEON COAST',
     heat: 4,
+    showBadge: true,
+    showStars: true,
     grain: true,
     vignette: true,
     halftone: false,
-    size: '1080x1080',
-    photos: [],
-    selectedPhotoId: null,
-    selectedPanel: 0,
-    panels: defaultPanels('grid4'),
+    frames: true,
+    selected: 0,
+    panels: [defaultPanel('pier'), defaultPanel('boulevard'), defaultPanel('pier'), defaultPanel('boulevard')],
   };
 }
 
-/** Panels for a layout: every slot starts empty, centred, at zoom 1. */
-export function defaultPanels(layout) {
-  const count = LAYOUT_PANELS[layout] ?? 4;
-  return Array.from({ length: count }, () => ({ photoId: null, ox: 0, oy: 0, zoom: 1 }));
+// Keep the panel list in step with the active layout, reusing transforms
+// wherever a panel survives the switch.
+export function panelsForLayout(state, layoutId) {
+  const layout = LAYOUTS.find((l) => l.id === layoutId) ?? LAYOUTS[0];
+  const old = state.panels;
+  const next = [];
+  for (let i = 0; i < layout.panels; i += 1) {
+    const keep = old[i] ?? old[i % Math.max(old.length, 1)] ?? defaultPanel('pier');
+    next.push({ photo: keep.photo, dx: keep.dx, dy: keep.dy, zoom: keep.zoom });
+  }
+  return next;
 }
 
-/** Deep-copies the serialisable part of the state (for history snapshots). */
-export function snapshot(state) {
-  return JSON.parse(JSON.stringify({
-    layout: state.layout,
-    grade: state.grade,
-    title: state.title,
-    subtitle: state.subtitle,
-    badge: state.badge,
-    heat: state.heat,
-    grain: state.grain,
-    vignette: state.vignette,
-    halftone: state.halftone,
-    size: state.size,
-    photos: state.photos,
-    selectedPhotoId: state.selectedPhotoId,
-    selectedPanel: state.selectedPanel,
-    panels: state.panels,
-  }));
+export function serializeState(state) {
+  const { selected, ...rest } = state;
+  return JSON.stringify(rest);
 }
 
-/** Restores a snapshot into the live state object, in place. */
-export function restore(state, snap) {
-  for (const key of Object.keys(snap)) state[key] = JSON.parse(JSON.stringify(snap[key]));
+export function applySnapshot(state, json) {
+  const data = JSON.parse(json);
+  for (const key of Object.keys(state)) delete state[key];
+  Object.assign(state, data, { selected: 0 });
 }
 
-/** Small undo/redo stack over snapshots. */
-export function createHistory(limit = 40) {
-  let past = [];
-  let future = [];
-  return {
-    push(snap) {
-      past.push(snap);
-      if (past.length > limit) past.shift();
-      future = [];
-    },
-    undo(current) {
-      if (!past.length) return null;
-      future.push(current);
-      return past.pop();
-    },
-    redo(current) {
-      if (!future.length) return null;
-      past.push(current);
-      return future.pop();
-    },
-    canUndo() { return past.length > 0; },
-    canRedo() { return future.length > 0; },
-  };
-}
-
-/** Loads an image from a URL (file, sample or data: URL). */
-export function loadImage(url) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error(`Could not load ${url}`));
-    img.src = url;
-  });
-}
-
-/** Reads a File into a data: URL (kept on this machine, never uploaded). */
-export function fileToDataURL(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
-}
-
-/** Registers a photo in the state and returns its record. */
-export function addPhoto(state, name, src) {
-  const photo = { id: `photo-${++photoSeq}-${Date.now().toString(36)}`, name, src };
-  state.photos.push(photo);
-  state.selectedPhotoId = photo.id;
-  return photo;
-}
-
-/** Resizes the panels array when the layout changes, keeping assignments. */
-export function resizePanels(state, layout) {
-  const count = LAYOUT_PANELS[layout] ?? 4;
-  const next = Array.from({ length: count }, (_, i) => state.panels[i] ?? { photoId: null, ox: 0, oy: 0, zoom: 1 });
-  state.panels = next;
-  state.selectedPanel = Math.min(state.selectedPanel, count - 1);
-}
-
-/** Puts one photo into every panel. */
-export function fillAllPanels(state, photoId) {
-  for (const panel of state.panels) panel.photoId = photoId;
-}
-
-/** Parses an export size like "1080x1350" into { w, h }. */
-export function parseSize(size) {
-  const [w, h] = size.split('x').map(Number);
-  return { w: w || 1080, h: h || 1080 };
+// Undo/redo over serialised snapshots. Push once per completed gesture
+// (a button click, a finished drag), never per pointermove.
+export class History {
+  constructor(state) {
+    this.past = [];
+    this.future = [];
+    this.current = serializeState(state);
+  }
+  push(state) {
+    const snap = serializeState(state);
+    if (snap === this.current) return;
+    this.past.push(this.current);
+    if (this.past.length > 60) this.past.shift();
+    this.current = snap;
+    this.future = [];
+  }
+  undo(state) {
+    if (!this.past.length) return false;
+    this.future.push(this.current);
+    this.current = this.past.pop();
+    applySnapshot(state, this.current);
+    return true;
+  }
+  redo(state) {
+    if (!this.future.length) return false;
+    this.past.push(this.current);
+    this.current = this.future.pop();
+    applySnapshot(state, this.current);
+    return true;
+  }
+  // Forget every snapshot and treat the given state as the new baseline
+  // (used after a ?shot= scene loads, so undo cannot rewind to the
+  // pre-scene defaults).
+  reset(state) {
+    this.past = [];
+    this.future = [];
+    this.current = serializeState(state);
+  }
+  get canUndo() { return this.past.length > 0; }
+  get canRedo() { return this.future.length > 0; }
 }
